@@ -80,8 +80,9 @@ struct State
 	int B;
 	CvPoint3D32f PL;   //Hand position
 	CvPoint3D32f PR;  
-	int TL;            //Hand trajectory label
-	int TR;
+	CvPoint3D32f Head;  //For hand trajectory label
+	vector<CvPoint3D32f> TL;            
+	vector<CvPoint3D32f> TR;
 	double frequency;  //Frequency of this state in the combined gallery.
 // 	int previous;      //-1 is the start.
 // 	int next;          //-2 is the end. 
@@ -865,6 +866,112 @@ void ReadDataFromGallery(	CString route,
 
 	delete[] p_gallery;
 	delete[] Label_sequence;
+}
+void ReSample(float x[],float y[],float z[],int n,int m)//n: srcNodeNum. m: desNodeNum
+{
+	const int F = 512;
+	double len=0.0;
+	double D=0.0;
+	double d=0.0;
+	int k=1;
+	float pointx[F];
+	float pointy[F];
+	float pointz[F];
+	for (int i=0;i<n;i++)
+	{
+		pointx[i]=x[i];
+		pointy[i]=y[i];
+		pointz[i]=z[i];
+	}
+
+	for (int j=1;j<n;j++)
+	{
+		len+=sqrt((pointx[j]-pointx[j-1])*(pointx[j]-pointx[j-1])+(pointy[j]-pointy[j-1])*(pointy[j]-pointy[j-1])+(pointz[j]-pointz[j-1])*(pointz[j]-pointz[j-1]));	
+	}
+	double I=len/(m-1);
+
+	if (/*I==0*/I<0.001)
+	{
+		for (int k=0;k<m;k++)
+		{
+			x[k]=pointx[0];
+			y[k]=pointy[0];
+			z[k]=pointz[0];
+		}
+	}
+	else
+	{
+		for (int i=1;i<n;i++)
+		{
+			d=sqrt((pointx[i]-pointx[i-1])*(pointx[i]-pointx[i-1])+(pointy[i]-pointy[i-1])*(pointy[i]-pointy[i-1])+(pointz[i]-pointz[i-1])*(pointz[i]-pointz[i-1]));
+			if(D+d>=I)
+			{
+				if (d!=0)//事实上，由于I!=0,d在这里不会等于0
+				{
+					x[k]=pointx[i-1]+((I-D)/d)*(pointx[i]-pointx[i-1]);
+					y[k]=pointy[i-1]+((I-D)/d)*(pointy[i]-pointy[i-1]);
+					z[k]=pointz[i-1]+((I-D)/d)*(pointz[i]-pointz[i-1]);
+				}
+				else//此时I==0，无需计算（之前对I==0的情况已经计算过了）
+				{
+					break;
+				}
+				pointx[i-1]=x[k];
+				pointy[i-1]=y[k];
+				pointz[i-1]=z[k];
+
+				k++;
+				i=i-1;
+				D=0.0;
+			}
+			else
+			{
+				D=D+d;
+			}
+		}
+	}
+
+	//由于舍入的原因，D+d>=I的等号不能确保最后一个点被记录，因此要特地记录下来
+	x[m-1]=pointx[n-1];
+	y[m-1]=pointy[n-1];
+	z[m-1]=pointz[n-1];
+}
+
+void traNormalize(Tra myTra, int nodeNumDes, CvPoint3D32f left[], CvPoint3D32f right[])
+{
+	int nodeNumSrc = myTra.frameNum;
+	const int F = 512;
+	float l_x[F];
+	float l_y[F];
+	float l_z[F];
+
+	float r_x[F];
+	float r_y[F];
+	float r_z[F];
+
+	for (int i=0; i<nodeNumSrc; i++)
+	{
+		l_x[i] = (float)myTra.lx[i];
+		l_y[i] = (float)myTra.ly[i];
+		l_z[i] = (float)myTra.lz[i];
+		r_x[i] = (float)myTra.rx[i];
+		r_y[i] = (float)myTra.ry[i];
+		r_z[i] = (float)myTra.rz[i];
+	}
+	ReSample(l_x, l_y, l_z, nodeNumSrc, nodeNumDes);
+	ReSample(r_x, r_y, r_z, nodeNumSrc, nodeNumDes);
+
+	for (int i=0; i<nodeNumDes; i++)
+	{
+		left[i].x = l_x[i];
+		left[i].y = l_y[i];
+		left[i].z = l_z[i];
+
+		right[i].x = r_x[i];
+		right[i].y = r_y[i];
+		right[i].z = r_z[i];
+	}
+	
 }
 
 void ReadTrajectoryFromDat(CString route, Tra myTra[])
@@ -1776,8 +1883,9 @@ double states_similar(State myState1, State myState2,
 
 }
 
-void stateGenerate(int keyFrameNo, int label[][LRB],int indicator[][LRB], State myState[])
+void stateGenerate(int keyFrameNo, int label[][LRB],int indicator[][LRB], State myState[], Tra myTra)
 {
+	//cout<<"keyFrameNo: "<<keyFrameNo<<" myTra: "<<myTra.segNum<<endl;
 	for (int i=0; i<keyFrameNo; i++)
 	{
 		myState[i].l = indicator[i][0];
@@ -1811,7 +1919,7 @@ int main()
 	for (int g=0; g<5; g++)
 	{
 		cout<<"Read trajectory data P5"<<g<<"..."<<endl;
-		root.Format("..\\input\\trajectory\\P5%d",g);
+		root.Format("..\\input\\20130925\\trajectory\\P5%d",g);
 		ReadTrajectoryFromDat(root, myTra[g]);
 	}
 
@@ -1846,7 +1954,7 @@ int main()
 	{
 		for (int w=0; w<Word_num; w++)
 		{
-			stateGenerate(keyFrameNo[g][w],label[g][w],indicator[g][w],myState[g][w]);
+			//stateGenerate(keyFrameNo[g][w],label[g][w],indicator[g][w],myState[g][w]);
 		}
 	}
 
@@ -1923,7 +2031,7 @@ int main()
 #ifdef ReadFromDat
 		//For gallery combination. Fast reading.
 	CString routeGallery;
-	routeGallery="..\\input";
+	routeGallery="..\\input\\20130925";
 	ReadDataFromGallery(routeGallery, GalleryNum, keyFrameNo,HOG_LRB, indicator);
 
 	//Label the posture.
@@ -1940,7 +2048,7 @@ int main()
 	{
 		for (int w=0; w<Word_num; w++)
 		{
-			stateGenerate(keyFrameNo[g][w],label[g][w],indicator[g][w],myState[g][w]);
+			stateGenerate(keyFrameNo[g][w],label[g][w],indicator[g][w],myState[g][w],myTra[g][w]);
 		}
 	}
 
@@ -1986,8 +2094,8 @@ int main()
 			float PRx = (float)myState_final[w][m].PR.x;  
 			float PRy = (float)myState_final[w][m].PR.y;  
 			float PRz = (float)myState_final[w][m].PR.z;  
-			float TL = (float)myState_final[w][m].TL;            
-			float TR = (float)myState_final[w][m].TR;
+			//float TL = (float)myState_final[w][m].TL;            
+			//float TR = (float)myState_final[w][m].TR;
 			float frequency = (float)myState_final[w][m].frequency;
 
 			outfileMyState.write((char*)&r,sizeof(r));
@@ -2002,8 +2110,8 @@ int main()
 			outfileMyState.write((char*)&PRx,sizeof(PRx));
 			outfileMyState.write((char*)&PRy,sizeof(PRy));
 			outfileMyState.write((char*)&PRz,sizeof(PRz));
-			outfileMyState.write((char*)&TL,sizeof(TL));
-			outfileMyState.write((char*)&TR,sizeof(TR));
+			//outfileMyState.write((char*)&TL,sizeof(TL));
+			//outfileMyState.write((char*)&TR,sizeof(TR));
 			outfileMyState.write((char*)&frequency,sizeof(frequency));
 		}
 		for (int k=0; k<MaxCombine+2; k++)
