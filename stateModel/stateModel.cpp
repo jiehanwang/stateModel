@@ -28,7 +28,7 @@ using namespace cv;
 
 #define GalleryNum  5
 #define SIZE 64
-#define Word_num 370         //Posture number
+#define Word_num 1000//370         //Posture number
 #define LRB 3                   //Left, right, both
 #define FusedLRB 1
 #define HOG_dimension 324//1764//720
@@ -87,6 +87,9 @@ struct State
 // 	int previous;      //-1 is the start.
 // 	int next;          //-2 is the end. 
 };
+
+const int traNumDes = 200;
+const int F = 2000;
 
 CString Add="\\*.*";
 ifstream infile;
@@ -869,7 +872,7 @@ void ReadDataFromGallery(	CString route,
 }
 void ReSample(float x[],float y[],float z[],int n,int m)//n: srcNodeNum. m: desNodeNum
 {
-	const int F = 512;
+	//const int F = 512;
 	double len=0.0;
 	double D=0.0;
 	double d=0.0;
@@ -940,7 +943,7 @@ void ReSample(float x[],float y[],float z[],int n,int m)//n: srcNodeNum. m: desN
 void traNormalize(Tra myTra, int nodeNumDes, CvPoint3D32f left[], CvPoint3D32f right[])
 {
 	int nodeNumSrc = myTra.frameNum;
-	const int F = 512;
+	
 	float l_x[F];
 	float l_y[F];
 	float l_z[F];
@@ -1895,6 +1898,26 @@ void stateGenerate(int keyFrameNo, int label[][LRB],int indicator[][LRB], State 
 		myState[i].L = label[i][0];
 		myState[i].R = label[i][1];
 		myState[i].B = label[i][2];
+
+		myState[i].Head.x = myTra.hx;
+		myState[i].Head.y = myTra.hy;
+		myState[i].Head.z = myTra.hz;
+
+		//const int traNumDes = 200;
+		CvPoint3D32f leftHand[traNumDes];
+		CvPoint3D32f righHand[traNumDes];
+		int traNumsrc = myTra.frameNum;
+
+		traNormalize(myTra, traNumDes, leftHand, righHand);
+
+		for (int j=0; j<traNumDes; j++)
+		{
+			//cout<<j<<" "<<leftHand[j].x<<" "<<leftHand[j].y<<" "<<leftHand[j].z<<", "
+			//<<righHand[j].x<<" "<<righHand[j].y<<" "<<righHand[j].z<<endl;
+			myState[i].TL.push_back(leftHand[j]);
+			myState[i].TR.push_back(righHand[j]);
+		}
+		
 	}
 }
 
@@ -1902,9 +1925,9 @@ void stateGenerate(int keyFrameNo, int label[][LRB],int indicator[][LRB], State 
 int main()
 {
 	int i,j,k,g,m,n;
-	CString TestdataFolder;
-	TestdataFolder = "20130616";
-	cout<<"**********Use data in file folder "<<TestdataFolder<<"**********"<<endl;
+// 	CString TestdataFolder;
+// 	TestdataFolder = "20130616";
+// 	cout<<"**********Use data in file folder "<<TestdataFolder<<"**********"<<endl;
 
 	readInPostureC("..\\input\\postureC_0.txt",0); //Left posture
 	readInPostureC("..\\input\\postureC_1.txt",1); //Right posture
@@ -1919,7 +1942,7 @@ int main()
 	for (int g=0; g<5; g++)
 	{
 		cout<<"Read trajectory data P5"<<g<<"..."<<endl;
-		root.Format("..\\input\\20130925\\trajectory\\P5%d",g);
+		root.Format("..\\input\\20131019\\trajectory\\P1%d",g);
 		ReadTrajectoryFromDat(root, myTra[g]);
 	}
 
@@ -2031,7 +2054,7 @@ int main()
 #ifdef ReadFromDat
 		//For gallery combination. Fast reading.
 	CString routeGallery;
-	routeGallery="..\\input\\20130925";
+	routeGallery="..\\input\\20131019";
 	ReadDataFromGallery(routeGallery, GalleryNum, keyFrameNo,HOG_LRB, indicator);
 
 	//Label the posture.
@@ -2094,6 +2117,11 @@ int main()
 			float PRx = (float)myState_final[w][m].PR.x;  
 			float PRy = (float)myState_final[w][m].PR.y;  
 			float PRz = (float)myState_final[w][m].PR.z;  
+			float headx = myState_final[w][m].Head.x;      //Trajectory
+			float heady = myState_final[w][m].Head.y;
+			float headz = myState_final[w][m].Head.z;
+			
+			//cout<<headx<<" "<<heady<<" "<<headz<<endl;
 			//float TL = (float)myState_final[w][m].TL;            
 			//float TR = (float)myState_final[w][m].TR;
 			float frequency = (float)myState_final[w][m].frequency;
@@ -2110,6 +2138,24 @@ int main()
 			outfileMyState.write((char*)&PRx,sizeof(PRx));
 			outfileMyState.write((char*)&PRy,sizeof(PRy));
 			outfileMyState.write((char*)&PRz,sizeof(PRz));
+			outfileMyState.write((char*)&headx,sizeof(headx));
+			outfileMyState.write((char*)&heady,sizeof(heady));
+			outfileMyState.write((char*)&headz,sizeof(headz));
+			for (int i=0; i<traNumDes; i++)
+			{
+				float lx = myState_final[w][m].TL[i].x;
+				float ly = myState_final[w][m].TL[i].y;
+				float lz = myState_final[w][m].TL[i].z;
+				float rx = myState_final[w][m].TR[i].x;
+				float ry = myState_final[w][m].TR[i].y;
+				float rz = myState_final[w][m].TR[i].z;
+				outfileMyState.write((char*)&lx,sizeof(lx));
+				outfileMyState.write((char*)&ly,sizeof(ly));
+				outfileMyState.write((char*)&lz,sizeof(lz));
+				outfileMyState.write((char*)&rx,sizeof(rx));
+				outfileMyState.write((char*)&ry,sizeof(ry));
+				outfileMyState.write((char*)&rz,sizeof(rz));
+			}
 			//outfileMyState.write((char*)&TL,sizeof(TL));
 			//outfileMyState.write((char*)&TR,sizeof(TR));
 			outfileMyState.write((char*)&frequency,sizeof(frequency));

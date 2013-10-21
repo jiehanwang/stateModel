@@ -1,0 +1,4 @@
+1. ÐÞ¸ÄWordNum
+2. Trajectory's input folder name + the PX
+3. Shape's input folder name
+4. Is const in F = 2000 large enough?
